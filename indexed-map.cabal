@@ -23,13 +23,15 @@ Library
                  , array
                  , deepseq >= 1.2 && < 1.5
                  , ghc-prim
+                 , transformers >= 0.4 && < 5
     ghc-options: -O2 -Wall
 
     exposed-modules:
-        Indexed.Ord
+        Indexed.Class
         Indexed.Map.Lazy
         Indexed.Map.Strict
         Indexed.Set
+        Indexed.Some
     other-modules:
         Indexed.Map.Base
         Indexed.Set.Base

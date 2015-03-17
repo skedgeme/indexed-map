@@ -152,8 +152,6 @@ module Indexed.Set.Base (
             -- ** Strict folds
             , foldr'
             , foldl'
-            -- ** Legacy folds
-            , fold
 
             -- * Min\/Max
             , findMin
@@ -191,19 +189,20 @@ module Indexed.Set.Base (
             ) where
 
 import Prelude hiding (filter,foldl,foldr,null,map)
+
 import qualified Data.List as List
 import Data.Bits (shiftL, shiftR)
 import Data.Monoid (Monoid(..))
+import Text.Read
 import Data.Typeable
-import Control.DeepSeq (NFData(rnf))
 
-import Indexed.Ord
+import Indexed.Class
+import Indexed.Some
 import Indexed.Utils.StrictFold
 import Indexed.Utils.StrictPair
 
 import GHC.Exts ( build )
 import qualified GHC.Exts as GHCExts
-import Text.Read
 
 
 {--------------------------------------------------------------------
@@ -224,28 +223,6 @@ m1 \\ m2 = difference m1 m2
 -- See Note: Order of constructors
 data Set (a :: k -> *) = forall x. Bin {-# UNPACK #-} !Size !(a x) !(Set a) !(Set a)
                        | Tip
-
-data SetKey a = forall x. SetKey !(a x)
-
-instance IEq a => Eq (SetKey a) where
-    (SetKey x) == (SetKey y) = ieq x y False True
-
-instance IOrd a => Ord (SetKey a) where
-    compare (SetKey x) (SetKey y) = icompare x y LT EQ GT
-
-instance IShow a => Show (SetKey a) where
-    show (SetKey x) = "SetKey " ++ ishow x
-
-instance IRead a => Read (SetKey a) where
-    -- TODO: Fix this instance
-    readPrec = undefined
-    {-
-    readPrec i = parens $ prec 10 $ do
-      Ident "SetKey" <- lexP
-      x <- ireadPrec
-      return (SetKey x)
-    -}
-    readListPrec = readListPrecDefault
 
 type Size     = Int
 
@@ -298,36 +275,6 @@ instance Foldable.Foldable Set where
 
 -}
 
-{-
-
-#if __GLASGOW_HASKELL__
-
-{--------------------------------------------------------------------
-  A Data instance
---------------------------------------------------------------------}
-
--- This instance preserves data abstraction at the cost of inefficiency.
--- We provide limited reflection services for the sake of data abstraction.
-
-instance (Data a, Ord a) => Data (Set a) where
-  gfoldl f z set = z fromList `f` (toList set)
-  toConstr _     = fromListConstr
-  gunfold k z c  = case constrIndex c of
-    1 -> k (z fromList)
-    _ -> error "gunfold"
-  dataTypeOf _   = setDataType
-  dataCast1 f    = gcast1 f
-
-fromListConstr :: Constr
-fromListConstr = mkConstr setDataType "fromList" [] Prefix
-
-setDataType :: DataType
-setDataType = mkDataType "Data.Set.Base.Set" [fromListConstr]
-
-#endif
-
--}
-
 {--------------------------------------------------------------------
   Query
 --------------------------------------------------------------------}
@@ -348,7 +295,10 @@ member :: IOrd a => a x -> Set a -> Bool
 member = go
   where
     go !_ Tip = False
-    go !x (Bin _ y l r) = icompare x y (go x l) True (go x r)
+    go !x (Bin _ y l r) = case icompare x y of
+      ILT _ -> (go x l) 
+      IGT _ -> (go x r)
+      IEQ   -> True
 {-# INLINABLE member #-}
 
 -- | /O(log n)/. Is the element not in the set?
@@ -360,32 +310,36 @@ notMember a t = not $ member a t
 --
 -- > lookupLT 3 (fromList [3, 5]) == Nothing
 -- > lookupLT 5 (fromList [3, 5]) == Just 3
-lookupLT :: forall a x. IOrd a => a x -> Set a -> Maybe (SetKey a)
+lookupLT :: forall a x. IOrd a => a x -> Set a -> Maybe (Some1 a)
 lookupLT x y = goNothing x y
   where
     goNothing !_ Tip = Nothing
-    goNothing !x (Bin _ y l r) = icompare x y (goNothing x l) (goNothing x l) (goJust x y r)
-    goJust :: forall y. a x -> a y -> Set a -> Maybe (SetKey a)
-    goJust !_ best Tip = Just $ SetKey best
-    goJust !x best (Bin _ y l r) = icompare x y (goJust x best l) (goJust x best l) (goJust x y r)
+    goNothing !x (Bin _ y l r) = case icompare x y of
+        IGT _   -> goJust x y r
+        _       -> goNothing x l
+    goJust :: forall y. a x -> a y -> Set a -> Maybe (Some1 a)
+    goJust !_ best Tip = Just $ Some1 best
+    goJust !x best (Bin _ y l r) = case icompare x y of
+        IGT _ -> goJust x y r
+        _     -> goJust x best l
 {-# INLINABLE lookupLT #-}
 
 -- | /O(log n)/. Find smallest element greater than the given one.
 --
 -- > lookupGT 4 (fromList [3, 5]) == Just 5
 -- > lookupGT 5 (fromList [3, 5]) == Nothing
-lookupGT :: forall a x. IOrd a => a x -> Set a -> Maybe (SetKey a)
+lookupGT :: forall a x. IOrd a => a x -> Set a -> Maybe (Some1 a)
 lookupGT x y = goNothing x y
   where
     goNothing !_ Tip = Nothing
-    goNothing !x (Bin _ y l r) = icompare x y (goJust x y l)
-                                              (goNothing x r)
-                                              (goNothing x r)
-    goJust :: forall y. a x -> a y -> Set a -> Maybe (SetKey a)
-    goJust !_ best Tip = Just $ SetKey best
-    goJust !x best (Bin _ y l r) = icompare x y (goJust x y l)
-                                                (goJust x best r)
-                                                (goJust x best r)
+    goNothing !x (Bin _ y l r) = case icompare x y of
+        ILT _ -> goJust x y l
+        _     -> goNothing x r
+    goJust :: forall y. a x -> a y -> Set a -> Maybe (Some1 a)
+    goJust !_ best Tip = Just $ Some1 best
+    goJust !x best (Bin _ y l r) = case icompare x y of
+        ILT _ -> goJust x y l
+        _     -> goJust x best r
 {-# INLINABLE lookupGT #-}
 
 -- | /O(log n)/. Find largest element smaller or equal to the given one.
@@ -393,18 +347,20 @@ lookupGT x y = goNothing x y
 -- > lookupLE 2 (fromList [3, 5]) == Nothing
 -- > lookupLE 4 (fromList [3, 5]) == Just 3
 -- > lookupLE 5 (fromList [3, 5]) == Just 5
-lookupLE :: forall a x. IOrd a => a x -> Set a -> Maybe (SetKey a)
+lookupLE :: forall a x. IOrd a => a x -> Set a -> Maybe (Some1 a)
 lookupLE x y = goNothing x y
   where
     goNothing !_ Tip = Nothing
-    goNothing !x (Bin _ y l r) = icompare x y (goNothing x l)
-                                              (Just (SetKey y))
-                                              (goJust x y r)
-    goJust :: forall y. a x -> a y -> Set a -> Maybe (SetKey a)
-    goJust !_ best Tip = Just $ SetKey best
-    goJust !x best (Bin _ y l r) = icompare x y (goJust x best l)
-                                                (Just (SetKey y))
-                                                (goJust x y r)
+    goNothing !x (Bin _ y l r) = case icompare x y of
+        ILT _ -> goNothing x l
+        IEQ   -> Just (Some1 y)
+        IGT _ -> goJust x y r
+    goJust :: forall y. a x -> a y -> Set a -> Maybe (Some1 a)
+    goJust !_ best Tip = Just $ Some1 best
+    goJust !x best (Bin _ y l r) = case icompare x y of
+        ILT _ -> goJust x best l
+        IEQ   -> Just (Some1 y)
+        IGT _ -> goJust x y r
 {-# INLINABLE lookupLE #-}
 
 -- | /O(log n)/. Find smallest element greater or equal to the given one.
@@ -412,18 +368,20 @@ lookupLE x y = goNothing x y
 -- > lookupGE 3 (fromList [3, 5]) == Just 3
 -- > lookupGE 4 (fromList [3, 5]) == Just 5
 -- > lookupGE 6 (fromList [3, 5]) == Nothing
-lookupGE :: forall a x. IOrd a => a x -> Set a -> Maybe (SetKey a)
+lookupGE :: forall a x. IOrd a => a x -> Set a -> Maybe (Some1 a)
 lookupGE = goNothing
   where
     goNothing !_ Tip = Nothing
-    goNothing !x (Bin _ y l r) = icompare x y (goJust x y l)
-                                              (Just (SetKey y))
-                                              (goNothing x r)
-    goJust :: forall y. a x -> a y -> Set a -> Maybe (SetKey a)
-    goJust !_ best Tip = Just $ SetKey best
-    goJust !x best (Bin _ y l r) = icompare x y (goJust x y l)
-                                                (Just (SetKey y))
-                                                (goJust x best r)
+    goNothing !x (Bin _ y l r) = case icompare x y of 
+        ILT _ -> goJust x y l
+        IEQ   -> Just (Some1 y)
+        IGT _ -> goNothing x r
+    goJust :: forall y. a x -> a y -> Set a -> Maybe (Some1 a)
+    goJust !_ best Tip = Just $ Some1 best
+    goJust !x best (Bin _ y l r) = case icompare x y of
+        ILT _ -> goJust x y l
+        IEQ   -> Just (Some1 y)
+        IGT _ -> goJust x best r
 {-# INLINABLE lookupGE #-}
 
 {--------------------------------------------------------------------
@@ -452,11 +410,10 @@ insert = go
   where
     go :: IOrd a => a x -> Set a -> Set a
     go !x Tip = singleton x
-    go !x (Bin sz y l r) = 
-      icompare x y 
-        (balanceL y (go x l) r)
-        (Bin sz x l r)
-        (balanceR y l (go x r))
+    go !x (Bin sz y l r) = case icompare x y of
+      ILT _ -> balanceL y (go x l) r
+      IEQ   -> Bin sz x l r
+      IGT _ -> balanceR y l (go x r)
 {-# INLINABLE insert #-}
 
 -- Insert an element to the set only if it is not in the set.
@@ -468,11 +425,10 @@ insertR = go
   where
     go :: IOrd a => a x -> Set a -> Set a
     go !x Tip = singleton x
-    go !x t@(Bin _ y l r) = 
-      icompare x y
-        (balanceL y (go x l) r)
-        t
-        (balanceR y l (go x r))
+    go !x t@(Bin _ y l r) = case icompare x y of
+      ILT _ -> balanceL y (go x l) r
+      IEQ   -> t
+      IGT _ -> balanceR y l (go x r)
 {-# INLINABLE insertR #-}
 
 -- | /O(log n)/. Delete an element from a set.
@@ -483,11 +439,10 @@ delete = go
   where
     go :: IOrd a => a x -> Set a -> Set a
     go !_ Tip = Tip
-    go !x (Bin _ y l r) =
-      icompare x y
-        (balanceR y (go x l) r)
-        (glue l r)
-        (balanceL y l (go x r))
+    go !x (Bin _ y l r) = case icompare x y of
+      ILT _ -> balanceR y (go x l) r
+      IEQ   -> glue l r
+      IGT _ -> balanceL y l (go x r)
 {-# INLINABLE delete #-}
 
 {--------------------------------------------------------------------
@@ -521,14 +476,14 @@ isSubsetOfX (Bin _ x l r) t
   Minimal, Maximal
 --------------------------------------------------------------------}
 -- | /O(log n)/. The minimal element of a set.
-findMin :: Set a -> SetKey a
-findMin (Bin _ x Tip _) = SetKey x
+findMin :: Set a -> Some1 a
+findMin (Bin _ x Tip _) = Some1 x
 findMin (Bin _ _ l _)   = findMin l
 findMin Tip             = error "Set.findMin: empty set has no minimal element"
 
 -- | /O(log n)/. The maximal element of a set.
-findMax :: Set a -> SetKey a
-findMax (Bin _ x _ Tip)  = SetKey x
+findMax :: Set a -> Some1 a
+findMax (Bin _ x _ Tip)  = Some1 x
 findMax (Bin _ _ _ r)    = findMax r
 findMax Tip              = error "Set.findMax: empty set has no maximal element"
 
@@ -654,7 +609,7 @@ partition p0 t0 = toPair $ go p0 t0
 -- for some @(x,y)@, @x \/= y && f x == f y@
 
 map :: IOrd b => (forall x. a x -> b x) -> Set a -> Set b
-map f = fromList . List.map (\(SetKey x) -> SetKey (f x)) . toList
+map f = fromList . List.map (\(Some1 x) -> Some1 (f x)) . toList
 {-# INLINABLE map #-}
 
 -- | /O(n)/. The
@@ -674,15 +629,6 @@ mapMonotonic f (Bin sz x l r) = Bin sz (f x) (mapMonotonic f l) (mapMonotonic f 
 {--------------------------------------------------------------------
   Fold
 --------------------------------------------------------------------}
--- | /O(n)/. Fold the elements in the set using the given right-associative
--- binary operator. This function is an equivalent of 'foldr' and is present
--- for compatibility only.
---
--- /Please note that fold will be deprecated in the future and removed./
-fold :: (forall x. a x -> b -> b) -> b -> Set a -> b
-fold = foldr
-{-# INLINE fold #-}
-
 -- | /O(n)/. Fold the elements in the set using the given right-associative
 -- binary operator, such that @'foldr' f z == 'Prelude.foldr' f z . 'toAscList'@.
 --
@@ -734,29 +680,29 @@ foldl' f z = go z
 --------------------------------------------------------------------}
 -- | /O(n)/. An alias of 'toAscList'. The elements of a set in ascending order.
 -- Subject to list fusion.
-elems :: Set a -> [SetKey a]
+elems :: Set a -> [Some1 a]
 elems = toAscList
 
 {--------------------------------------------------------------------
   Lists
 --------------------------------------------------------------------}
 instance (IOrd a) => GHCExts.IsList (Set a) where
-  type Item (Set a) = SetKey a
+  type Item (Set a) = Some1 a
   fromList = fromList
   toList   = toList
 
 -- | /O(n)/. Convert the set to a list of elements. Subject to list fusion.
-toList :: Set a -> [SetKey a]
+toList :: Set a -> [Some1 a]
 toList = toAscList
 
 -- | /O(n)/. Convert the set to an ascending list of elements. Subject to list fusion.
-toAscList :: Set a -> [SetKey a]
-toAscList = foldr (\x xs -> SetKey x : xs) []
+toAscList :: Set a -> [Some1 a]
+toAscList = foldr (\x xs -> Some1 x : xs) []
 
 -- | /O(n)/. Convert the set to a descending list of elements. Subject to list
 -- fusion.
-toDescList :: Set a -> [SetKey a]
-toDescList = foldl (\xs x -> SetKey x : xs) []
+toDescList :: Set a -> [Some1 a]
+toDescList = foldl (\xs x -> Some1 x : xs) []
 
 -- List fusion for the list generating functions.
 -- The foldrFB and foldlFB are foldr and foldl equivalents, used for list fusion.
@@ -780,10 +726,10 @@ foldlFB = foldl
 -- before phase 0, otherwise the fusion rules would not fire at all.
 {-# NOINLINE[0] toAscList #-}
 {-# NOINLINE[0] toDescList #-}
-{-# RULES "Set.toAscList" [~1] forall s . toAscList s = build (\c n -> foldrFB (\x -> c (SetKey x)) n s) #-}
-{-# RULES "Set.toAscListBack" [1] foldrFB (\x y -> SetKey x : y) [] = toAscList #-}
-{-# RULES "Set.toDescList" [~1] forall s . toDescList s = build (\c n -> foldlFB (\xs x -> c (SetKey x) xs) n s) #-}
-{-# RULES "Set.toDescListBack" [1] foldlFB (\xs x -> SetKey x : xs) [] = toDescList #-}
+{-# RULES "Set.toAscList" [~1] forall s . toAscList s = build (\c n -> foldrFB (\x -> c (Some1 x)) n s) #-}
+{-# RULES "Set.toAscListBack" [1] foldrFB (\x y -> Some1 x : y) [] = toAscList #-}
+{-# RULES "Set.toDescList" [~1] forall s . toDescList s = build (\c n -> foldlFB (\xs x -> c (Some1 x) xs) n s) #-}
+{-# RULES "Set.toDescListBack" [1] foldlFB (\xs x -> Some1 x : xs) [] = toDescList #-}
 
 -- | /O(n*log n)/. Create a set from a list of elements.
 --
@@ -792,22 +738,24 @@ foldlFB = foldl
 
 -- For some reason, when 'singleton' is used in fromList or in
 -- create, it is not inlined, so we inline it manually.
-fromList :: IOrd a => [SetKey a] -> Set a
+fromList :: IOrd a => [Some1 a] -> Set a
 fromList [] = Tip
-fromList [SetKey x] = Bin 1 x Tip Tip
-fromList (SetKey x0 : xs0) | not_ordered x0 xs0 = fromList' (Bin 1 x0 Tip Tip) xs0
-                    | otherwise = go (1::Int) (Bin 1 x0 Tip Tip) xs0
+fromList [Some1 x] = Bin 1 x Tip Tip
+fromList (Some1 x0 : xs0) | not_ordered x0 xs0 = fromList' (Bin 1 x0 Tip Tip) xs0
+                          | otherwise = go (1::Int) (Bin 1 x0 Tip Tip) xs0
   where
     not_ordered _ [] = False
-    not_ordered x (SetKey y : _) = icompare x y False True True
+    not_ordered x (Some1 y : _) = case icompare x y of
+        ILT _ -> False
+        _     -> True
     {-# INLINE not_ordered #-}
 
     fromList' t0 xs = foldlStrict ins t0 xs
-      where ins t (SetKey x) = insert x t
+      where ins t (Some1 x) = insert x t
 
     go !_ t [] = t
-    go !_ t [SetKey x] = insertMax x t
-    go !s l xs@(SetKey x : xss) | not_ordered x xss = fromList' l xs
+    go !_ t [Some1 x] = insertMax x t
+    go !s l xs@(Some1 x : xss) | not_ordered x xss = fromList' l xs
                                | otherwise = case create s xss of
                                     (r, ys, []) -> go (s `shiftL` 1) (link x l r) ys
                                     (r, _,  ys) -> fromList' (link x l r) ys
@@ -818,15 +766,15 @@ fromList (SetKey x0 : xs0) | not_ordered x0 xs0 = fromList' (Bin 1 x0 Tip Tip) x
     -- and must be inserted using fromList'. Otherwise the keys have been
     -- ordered so far.
     create !_ [] = (Tip, [], [])
-    create !s xs@(SetKey x : xss)
+    create !s xs@(Some1 x : xss)
       | s == 1 = if not_ordered x xss then (Bin 1 x Tip Tip, [], xss)
                                       else (Bin 1 x Tip Tip, xss, [])
       | otherwise = case create (s `shiftR` 1) xs of
                       res@(_, [], _) -> res
-                      (l, [SetKey y], zs) -> (insertMax y l, [], zs)
-                      (l, ys@(SetKey y:yss), _) | not_ordered y yss -> (l, [], ys)
-                                                | otherwise -> case create (s `shiftR` 1) yss of
-                                                    (r, zs, ws) -> (link y l r, zs, ws)
+                      (l, [Some1 y], zs) -> (insertMax y l, [], zs)
+                      (l, ys@(Some1 y:yss), _) | not_ordered y yss -> (l, [], ys)
+                                               | otherwise -> case create (s `shiftR` 1) yss of
+                                                   (r, zs, ws) -> (link y l r, zs, ws)
 {-# INLINABLE fromList #-}
 
 {--------------------------------------------------------------------
@@ -837,7 +785,7 @@ fromList (SetKey x0 : xs0) | not_ordered x0 xs0 = fromList' (Bin 1 x0 Tip Tip) x
 --------------------------------------------------------------------}
 -- | /O(n)/. Build a set from an ascending list in linear time.
 -- /The precondition (input list is ascending) is not checked./
-fromAscList :: IEq a => [SetKey a] -> Set a
+fromAscList :: IEq a => [Some1 a] -> Set a
 fromAscList xs
   = fromDistinctAscList (combineEq xs)
   where
@@ -849,7 +797,9 @@ fromAscList xs
         (x:xx) -> combineEq' x xx
 
   combineEq' z [] = [z]
-  combineEq' z@(SetKey z') (x@(SetKey x'):xs') = ieq z' x' (z:combineEq' x xs') (combineEq' z xs')
+  combineEq' z@(Some1 z') (x@(Some1 x'):xs') = case ieq z' x' of
+    IFalse _ -> z:combineEq' x xs'
+    ITrue    -> combineEq' z xs'
 {-# INLINABLE fromAscList #-}
 
 
@@ -858,20 +808,20 @@ fromAscList xs
 
 -- For some reason, when 'singleton' is used in fromDistinctAscList or in
 -- create, it is not inlined, so we inline it manually.
-fromDistinctAscList :: [SetKey a] -> Set a
+fromDistinctAscList :: [Some1 a] -> Set a
 fromDistinctAscList [] = Tip
-fromDistinctAscList (SetKey x0 : xs0) = go (1::Int) (Bin 1 x0 Tip Tip) xs0
+fromDistinctAscList (Some1 x0 : xs0) = go (1::Int) (Bin 1 x0 Tip Tip) xs0
   where
     go !_ t [] = t
-    go !s l (SetKey x : xs) = case create s xs of
-                                (r, ys) -> go (s `shiftL` 1) (link x l r) ys
+    go !s l (Some1 x : xs) = case create s xs of
+                               (r, ys) -> go (s `shiftL` 1) (link x l r) ys
 
     create !_ [] = (Tip, [])
-    create !s xs@(SetKey x : xs')
+    create !s xs@(Some1 x : xs')
       | s == 1 = (Bin 1 x Tip Tip, xs')
       | otherwise = case create (s `shiftR` 1) xs of
                       res@(_, []) -> res
-                      (l, SetKey y:ys) -> case create (s `shiftR` 1) ys of
+                      (l, Some1 y:ys) -> case create (s `shiftR` 1) ys of
                         (r, zs) -> (link y l r, zs)
 
 {--------------------------------------------------------------------
@@ -913,14 +863,6 @@ instance (IRead a, IOrd a) => Read (Set a) where
 deriving instance Typeable Set
 
 {--------------------------------------------------------------------
-  NFData
---------------------------------------------------------------------}
-
-instance NFData1 a => NFData (Set a) where
-    rnf Tip           = ()
-    rnf (Bin _ y l r) = rnf1 y `seq` rnf l `seq` rnf r
-
-{--------------------------------------------------------------------
   Utility functions that return sub-ranges of the original
   tree. Some functions take a `Maybe value` as an argument to
   allow comparisons against infinite values. These are called `blow`
@@ -947,11 +889,17 @@ data MaybeS a = NothingS | forall x. JustS !(a x)
 --------------------------------------------------------------------}
 trim :: IOrd a => MaybeS a -> MaybeS a -> Set a -> Set a
 trim NothingS   NothingS   t = t
-trim (JustS lx) NothingS   t = greater lx t where greater lo (Bin _ x _ r) = icompare x lo (greater lo r) (greater lo r) (error "trim precondition failed")
+trim (JustS lx) NothingS   t = greater lx t where greater lo (Bin _ x _ r) = case icompare x lo of
+                                                    IGT _ -> error "trim precondition failed"
+                                                    _     -> greater lo r
                                                   greater _  t' = t'
-trim NothingS   (JustS hx) t = lesser hx t  where lesser  hi (Bin _ x l _) = icompare x hi (error "trim precondition failed") (lesser hi l) (lesser hi l)
+trim NothingS   (JustS hx) t = lesser hx t  where lesser  hi (Bin _ x l _) = case icompare x hi of
+                                                    ILT _ -> error "trim precondition failed"
+                                                    _     -> lesser hi l
                                                   lesser  _  t' = t'
-trim (JustS lx) (JustS hx) t = middle lx hx t  where middle lo hi (Bin _ x l r) = icompare x lo (middle lo hi r) (middle lo hi r) (middle lo hi l)
+trim (JustS lx) (JustS hx) t = middle lx hx t  where middle lo hi (Bin _ x l r) = case icompare x lo of
+                                                      IGT _ -> middle lo hi l
+                                                      _     -> middle lo hi r
                                                      middle _  _  t' = t'
 {-# INLINABLE trim #-}
 
@@ -963,18 +911,20 @@ filterGt :: IOrd a => MaybeS a -> Set a -> Set a
 filterGt NothingS t = t
 filterGt (JustS b) t = filter' b t
   where filter' _   Tip = Tip
-        filter' b' (Bin _ x l r) = icompare b' x (link x (filter' b' l) r) 
-                                                 r 
-                                                 (filter' b' r)
+        filter' b' (Bin _ x l r) = case icompare b' x of
+                                     ILT _ -> link x (filter' b' l) r
+                                     IEQ   -> r 
+                                     IGT _ -> filter' b' r
 {-# INLINABLE filterGt #-}
 
 filterLt :: IOrd a => MaybeS a -> Set a -> Set a
 filterLt NothingS t = t
 filterLt (JustS b) t = filter' b t
   where filter' _   Tip = Tip
-        filter' b' (Bin _ x l r) = icompare x b' (link x l (filter' b' r))
-                                                 l
-                                                 (filter' b' l)
+        filter' b' (Bin _ x l r) = case icompare x b' of
+                                     ILT _ -> link x l (filter' b' r)
+                                     IEQ   -> l
+                                     IGT _ -> filter' b' l
 {-# INLINABLE filterLt #-}
 
 {--------------------------------------------------------------------
@@ -987,24 +937,24 @@ split :: IOrd a => a x -> Set a -> (Set a,Set a)
 split x0 t0 = toPair $ go x0 t0
   where
     go _ Tip = (Tip :*: Tip)
-    go x (Bin _ y l r) = icompare x y (let (lt :*: gt) = go x l in (lt :*: link y gt r))
-                                      (l :*: r)
-                                      (let (lt :*: gt) = go x r in (link y l lt :*: gt))
+    go x (Bin _ y l r) = case icompare x y of
+                           ILT _ -> let (lt :*: gt) = go x l in (lt :*: link y gt r)
+                           IEQ   -> l :*: r
+                           IGT _ -> let (lt :*: gt) = go x r in (link y l lt :*: gt)
 {-# INLINABLE split #-}
 
 -- | /O(log n)/. Performs a 'split' but also returns whether the pivot
 -- element was found in the original set.
 splitMember :: IOrd a => a x -> Set a -> (Set a,Bool,Set a)
 splitMember _ Tip = (Tip, False, Tip)
-splitMember x (Bin _ y l r) = icompare x y (let (lt, found, gt) = splitMember x l
-                                                gt' = link y gt r
-                                            in gt' `seq` (lt, found, gt')
-                                           )
-                                           (l, True, r)
-                                           (let (lt, found, gt) = splitMember x r
-                                                lt' = link y l lt
-                                            in lt' `seq` (lt', found, gt)
-                                           )
+splitMember x (Bin _ y l r) = case icompare x y of
+                                ILT _ -> let (lt, found, gt) = splitMember x l
+                                             gt' = link y gt r
+                                         in gt' `seq` (lt, found, gt')
+                                IEQ   -> (l, True, r)
+                                IGT _ -> let (lt, found, gt) = splitMember x r
+                                             lt' = link y l lt
+                                         in lt' `seq` (lt', found, gt)
 {-# INLINABLE splitMember #-}
 
 {--------------------------------------------------------------------
@@ -1027,7 +977,10 @@ findIndex = go 0
   where
     go :: IOrd a => Int -> a x -> Set a -> Int
     go !_   !_ Tip  = error "Set.findIndex: element is not in the set"
-    go !idx !x (Bin _ kx l r) = icompare x kx (go idx x l) (idx + size l) (go (idx + size l + 1) x r)
+    go !idx !x (Bin _ kx l r) = case icompare x kx of
+                                  ILT _ -> go idx x l
+                                  IEQ   -> idx + size l
+                                  IGT _ -> go (idx + size l + 1) x r
 {-# INLINABLE findIndex #-}
 
 -- | /O(log n)/. Lookup the /index/ of an element, which is its zero-based index in
@@ -1045,7 +998,10 @@ lookupIndex = go 0
   where
     go :: IOrd a => Int -> a x -> Set a -> Maybe Int
     go !_   !_ Tip  = Nothing
-    go !idx !x (Bin _ kx l r) = icompare x kx (go idx x l) (Just $! idx + size l) (go (idx + size l + 1) x r)
+    go !idx !x (Bin _ kx l r) = case icompare x kx of
+                                  ILT _ -> go idx x l
+                                  IEQ   -> Just $! idx + size l
+                                  IGT _ -> go (idx + size l + 1) x r
 {-# INLINABLE lookupIndex #-}
 
 -- | /O(log n)/. Retrieve an element by its /index/, i.e. by its zero-based
@@ -1056,13 +1012,13 @@ lookupIndex = go 0
 -- > elemAt 1 (fromList [5,3]) == 5
 -- > elemAt 2 (fromList [5,3])    Error: index out of range
 
-elemAt :: Int -> Set a -> SetKey a
+elemAt :: Int -> Set a -> Some1 a
 elemAt !_ Tip = error "Set.elemAt: index out of range"
 elemAt !i (Bin _ x l r)
   = case compare i sizeL of
       LT -> elemAt i l
       GT -> elemAt (i-sizeL-1) r
-      EQ -> SetKey x
+      EQ -> Some1 x
   where
     sizeL = size l
 
@@ -1161,39 +1117,39 @@ glue :: Set a -> Set a -> Set a
 glue Tip r = r
 glue l Tip = l
 glue l r
-  | size l > size r = let (m,l') = deleteFindMax l in case m of SetKey m' -> balanceR m' l' r
-  | otherwise       = let (m,r') = deleteFindMin r in case m of SetKey m' -> balanceL m' l r'
+  | size l > size r = let (m,l') = deleteFindMax l in case m of Some1 m' -> balanceR m' l' r
+  | otherwise       = let (m,r') = deleteFindMin r in case m of Some1 m' -> balanceL m' l r'
 
 -- | /O(log n)/. Delete and find the minimal element.
 --
 -- > deleteFindMin set = (findMin set, deleteMin set)
 
-deleteFindMin :: Set a -> (SetKey a,Set a)
+deleteFindMin :: Set a -> (Some1 a,Set a)
 deleteFindMin t
   = case t of
-      Bin _ x Tip r -> (SetKey x,r)
+      Bin _ x Tip r -> (Some1 x,r)
       Bin _ x l r   -> let (xm,l') = deleteFindMin l in (xm,balanceR x l' r)
       Tip           -> (error "Set.deleteFindMin: can not return the minimal element of an empty set", Tip)
 
 -- | /O(log n)/. Delete and find the maximal element.
 --
 -- > deleteFindMax set = (findMax set, deleteMax set)
-deleteFindMax :: Set a -> (SetKey a,Set a)
+deleteFindMax :: Set a -> (Some1 a,Set a)
 deleteFindMax t
   = case t of
-      Bin _ x l Tip -> (SetKey x,l)
+      Bin _ x l Tip -> (Some1 x,l)
       Bin _ x l r   -> let (xm,r') = deleteFindMax r in (xm,balanceL x l r')
       Tip           -> (error "Set.deleteFindMax: can not return the maximal element of an empty set", Tip)
 
 -- | /O(log n)/. Retrieves the minimal key of the set, and the set
 -- stripped of that element, or 'Nothing' if passed an empty set.
-minView :: Set a -> Maybe (SetKey a, Set a)
+minView :: Set a -> Maybe (Some1 a, Set a)
 minView Tip = Nothing
 minView x = Just (deleteFindMin x)
 
 -- | /O(log n)/. Retrieves the maximal key of the set, and the set
 -- stripped of that element, or 'Nothing' if passed an empty set.
-maxView :: Set a -> Maybe (SetKey a, Set a)
+maxView :: Set a -> Maybe (Some1 a, Set a)
 maxView Tip = Nothing
 maxView x = Just (deleteFindMax x)
 
@@ -1471,7 +1427,12 @@ ordered t
       = case t' of
           Tip         -> True
           Bin _ x l r -> (lo x) && (hi x) && bounded lo (`ilt` x) l && bounded (`igt` x) hi r
-
+    ilt x y = case icompare x y of
+                ILT _ -> True
+                _     -> False
+    igt x y = case icompare x y of
+                IGT _ -> True
+                _     -> False
 balanced :: Set a -> Bool
 balanced t
   = case t of

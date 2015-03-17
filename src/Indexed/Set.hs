@@ -1,10 +1,3 @@
-{-# LANGUAGE CPP #-}
-#if !defined(TESTING) && __GLASGOW_HASKELL__ >= 703
-{-# LANGUAGE Safe #-}
-#endif
-
-#include "containers.h"
-
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Indexed.Set
@@ -50,12 +43,8 @@ module Indexed.Set (
             -- $strictness
 
             -- * Set type
-#if !defined(TESTING)
               Set          -- instance Eq,Ord,Show,Read,Data,Typeable
-#else
-              Set(..)
-#endif
-
+            , Some1 (..)
             -- * Operators
             , (\\)
 
@@ -106,8 +95,6 @@ module Indexed.Set (
             -- ** Strict folds
             , foldr'
             , foldl'
-            -- ** Legacy folds
-            , fold
 
             -- * Min\/Max
             , findMin
@@ -136,16 +123,9 @@ module Indexed.Set (
             , showTree
             , showTreeWith
             , valid
-
-#if defined(TESTING)
-            -- Internals (for testing)
-            , bin
-            , balanced
-            , link
-            , merge
-#endif
             ) where
 
+import Indexed.Some
 import Indexed.Set.Base as S
 
 -- $strictness
