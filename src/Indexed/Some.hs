@@ -24,12 +24,12 @@ data Some2 a b = forall x. Some2 (a x) (b x)
 instance IEq a => Eq (Some1 a) where
   (Some1 a) == (Some1 b) = case ieq a b of
     IFalse -> False
-    ITrue    -> True
+    ITrue  -> True
 
 instance IOrd a => Ord (Some1 a) where
   compare (Some1 a) (Some1 b) = case icompare a b of
     ILT -> LT
-    IEQ   -> EQ
+    IEQ -> EQ
     IGT -> GT
 
 instance IShow a => Show (Some1 a) where
@@ -45,16 +45,16 @@ instance IRead a => Read (Some1 a) where
 instance (IEq a, IEq b) => Eq (Some2 a b) where
   (Some2 a b) == (Some2 c d) = case ieq a c of
     IFalse -> False
-    ITrue    -> case ieq b d of
+    ITrue  -> case ieq b d of
       IFalse -> False
-      ITrue    -> True
+      ITrue  -> True
 
 instance (IOrd a, IOrd b) => Ord (Some2 a b) where
   compare (Some2 a b) (Some2 c d) = case icompare a c of
     ILT -> LT
-    IEQ   -> case icompare b d of
+    IEQ -> case icompare b d of
       ILT -> LT
-      IEQ   -> EQ
+      IEQ -> EQ
       IGT -> GT
     IGT -> GT
 
