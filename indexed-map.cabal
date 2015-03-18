@@ -4,14 +4,13 @@ license: BSD3
 license-file: LICENSE
 maintainer: daniel.haraj@skedge.me
 bug-reports: https://github.com/skedgeme/indexed-map/issues
-synopsis: Indexed map and set
+synopsis: Indexed Map and Set
 category: Data Structures
 description:
     This package contains implementations of Sets and Maps whose keys and values are indexed on a kind. The implementations are based on the implementations for Data.Set and Data.Map in the containers library, and so should be rather performant.
 build-type: Simple
 cabal-version:  >=1.8
 extra-source-files:
-    include/containers.h
 
 source-repository head
     type:     git
@@ -21,9 +20,7 @@ Library
     hs-source-dirs: src
     build-depends: base >= 4.7 && < 5
                  , array
-                 , deepseq >= 1.2 && < 1.5
                  , ghc-prim
-                 , transformers >= 0.4 && < 5
     ghc-options: -O2 -Wall
 
     exposed-modules:

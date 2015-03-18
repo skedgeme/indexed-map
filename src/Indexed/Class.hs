@@ -10,9 +10,9 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Indexed.Class
--- Copyright   :  (C) 2012 Edward Kmett
+-- Copyright   :  (C) 2015 SkedgeMe LLC
 -- License     :  BSD-style (see the file LICENSE)
--- Maintainer  :  Edward Kmett <ekmett@gmail.com>
+-- Maintainer  :  Daniel Haraj <daniel.haraj@skedge.me>
 -- Stability   :  experimental
 -- Portability :  non-portable
 --
@@ -31,30 +31,25 @@ module Indexed.Class
   , ireadListPrecDefault -- :: (Read1 f, Read a) => ReadPrec [f a]
   ) where
 
-import Control.Arrow (first)
-import Data.Foldable
-import Data.Traversable
-import Data.Typeable
 import Text.Read
 import qualified Text.ParserCombinators.ReadP as P
 import qualified Text.Read.Lex as L
 
 data IBool a b where
-  IFalse :: Maybe (a :~: b) -> IBool a b
+  IFalse :: IBool a b
   ITrue :: IBool a a
 
 data IOrdering a b where
-  ILT :: Maybe (a :~: b) -> IOrdering a b
+  ILT :: IOrdering a b
   IEQ :: IOrdering a a
-  IGT :: Maybe (a :~: b) -> IOrdering a b
+  IGT :: IOrdering a b
 
 class IEq f where
   ieq :: f a -> f b -> IBool a b
   default ieq :: IOrd f => f a -> f b -> IBool a b
   ieq fa fb = case icompare fa fb of
     IEQ -> ITrue
-    ILT meq -> IFalse meq
-    IGT meq -> IFalse meq
+    _   -> IFalse
 
 class IEq f => IOrd f where
   icompare :: f a -> f b -> IOrdering a b

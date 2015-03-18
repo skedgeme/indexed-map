@@ -1,20 +1,15 @@
 {-# LANGUAGE CPP #-}
-#if __GLASGOW_HASKELL__
 {-# LANGUAGE MagicHash #-}
-#endif
-#if !defined(TESTING) && __GLASGOW_HASKELL__ >= 703
 {-# LANGUAGE Trustworthy #-}
-#endif
-
-#include "containers.h"
 
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Indexed.Utils.BitUtil
 -- Copyright   :  (c) Clark Gaebel 2012
 --                (c) Johan Tibel 2012
+--                (c) SkedgeMe LLC 2015
 -- License     :  BSD-style
--- Maintainer  :  libraries@haskell.org
+-- Maintainer  :  daniel.haraj@skedge.me
 -- Stability   :  provisional
 -- Portability :  portable
 -----------------------------------------------------------------------------
@@ -27,12 +22,8 @@ module Indexed.Utils.BitUtil
 
 import Data.Bits ((.|.), xor)
 
-#if __GLASGOW_HASKELL__
 import GHC.Exts (Word(..), Int(..))
 import GHC.Prim (uncheckedShiftL#, uncheckedShiftRL#)
-#else
-import Data.Word (shiftL, shiftR)
-#endif
 
 -- The highestBitMask implementation is based on
 -- http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
@@ -45,7 +36,7 @@ highestBitMask x1 = let x2 = x1 .|. x1 `shiftRL` 1
                         x4 = x3 .|. x3 `shiftRL` 4
                         x5 = x4 .|. x4 `shiftRL` 8
                         x6 = x5 .|. x5 `shiftRL` 16
-#if !(defined(__GLASGOW_HASKELL__) && WORD_SIZE_IN_BITS==32)
+#if !(WORD_SIZE_IN_BITS==32)
                         x7 = x6 .|. x6 `shiftRL` 32
                      in x7 `xor` (x7 `shiftRL` 1)
 #else
@@ -55,15 +46,10 @@ highestBitMask x1 = let x2 = x1 .|. x1 `shiftRL` 1
 
 -- Right and left logical shifts.
 shiftRL, shiftLL :: Word -> Int -> Word
-#if __GLASGOW_HASKELL__
 {--------------------------------------------------------------------
   GHC: use unboxing to get @shiftRL@ inlined.
 --------------------------------------------------------------------}
 shiftRL (W# x) (I# i) = W# (uncheckedShiftRL# x i)
 shiftLL (W# x) (I# i) = W# (uncheckedShiftL#  x i)
-#else
-shiftRL x i   = shiftR x i
-shiftLL x i   = shiftL x i
-#endif
 {-# INLINE shiftRL #-}
 {-# INLINE shiftLL #-}

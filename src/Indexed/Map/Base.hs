@@ -6,9 +6,11 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE PatternGuards #-}
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Data.Map.Base
+-- Module      :  Indexed.Map.Base
 -- Copyright   :  (c) Daan Leijen 2002
 --                (c) Andriy Palamarchuk 2008
 --                (c) SkedgeMe LLC 2015
@@ -267,10 +269,8 @@ module Indexed.Map.Base (
 
 import Control.Applicative (Applicative(..), (<$>))
 import Data.Monoid (Monoid(..))
-import Data.Traversable (Traversable(traverse))
 
 import Data.Bits (shiftL, shiftR)
-import qualified Data.Foldable as Foldable
 import Data.Typeable
 import Prelude hiding (lookup, map, filter, foldr, foldl, null)
 
@@ -283,8 +283,6 @@ import Indexed.Utils.StrictPair
 import GHC.Exts ( build )
 import qualified GHC.Exts as GHCExts
 import Text.Read
-import Data.Data
-import Data.Coerce
 
 
 {--------------------------------------------------------------------
@@ -382,12 +380,12 @@ size (Bin sz _ _ _ _) = sz
 lookup :: forall k a x. IOrd k => k x -> Map k a -> Maybe (a x)
 lookup = go
   where
-    go :: forall k a x. IOrd k => k x -> Map k a -> Maybe (a x)
+    go :: k x -> Map k a -> Maybe (a x)
     go !_ Tip = Nothing
     go !k (Bin _ kx x l r) = case icompare k kx of
-      ILT _ -> go k l
-      IGT _ -> go k r
-      IEQ   -> Just x
+      ILT -> go k l
+      IGT -> go k r
+      IEQ -> Just x
 {-# INLINABLE lookup #-}
 
 -- | /O(log n)/. Is the key a member of the map? See also 'notMember'.
@@ -399,9 +397,9 @@ member = go
   where
     go !_ Tip = False
     go !k (Bin _ kx _ l r) = case icompare k kx of
-      ILT _ -> go k l
-      IGT _ -> go k r
-      IEQ   -> True
+      ILT -> go k l
+      IGT -> go k r
+      IEQ -> True
 {-# INLINABLE member #-}
 
 -- | /O(log n)/. Is the key not a member of the map? See also 'member'.
@@ -417,12 +415,12 @@ notMember k m = not $ member k m
 find :: forall k a x. IOrd k => k x -> Map k a -> a x
 find = go
   where
-    go :: forall k a x. IOrd k => k x -> Map k a -> a x
+    go :: k x -> Map k a -> a x
     go !_ Tip = error "Map.!: given key is not an element in the map"
     go !k (Bin _ kx x l r) = case icompare k kx of
-      ILT _ -> go k l
-      IGT _ -> go k r
-      IEQ   -> x
+      ILT -> go k l
+      IGT -> go k r
+      IEQ -> x
 {-# INLINABLE find #-}
 
 -- | /O(log n)/. The expression @('findWithDefault' def k map)@ returns
@@ -434,12 +432,12 @@ find = go
 findWithDefault :: forall k a x. IOrd k => a x -> k x -> Map k a -> a x
 findWithDefault = go
   where
-    go :: forall k a x. IOrd k => a x -> k x -> Map k a -> a x
+    go :: a x -> k x -> Map k a -> a x
     go def !_ Tip = def
     go def !k (Bin _ kx x l r) = case icompare k kx of
-      ILT _ -> go def k l
-      IGT _ -> go def k r
-      IEQ   -> x
+      ILT -> go def k l
+      IGT -> go def k r
+      IEQ -> x
 {-# INLINABLE findWithDefault #-}
 
 -- | /O(log n)/. Find largest key smaller than the given one and return the
@@ -453,12 +451,12 @@ lookupLT = goNothing
     goNothing :: forall k v x. IOrd k => k x -> Map k v -> Maybe (Some2 k v)
     goNothing !_ Tip = Nothing
     goNothing !k (Bin _ kx x l r) = case icompare k kx of
-      IGT _ -> goJust k kx x r
+      IGT -> goJust k kx x r
       _     -> goNothing k l
     goJust :: forall k v x y. IOrd k => k x -> k y -> v y -> Map k v -> Maybe (Some2 k v)
     goJust !_ kx' x' Tip = Just (Some2 kx' x')
     goJust !k kx' x' (Bin _ kx x l r) = case icompare k kx of
-      IGT _ -> goJust k kx x r
+      IGT -> goJust k kx x r
       _     -> goJust k kx' x' l
 {-# INLINABLE lookupLT #-}
 
@@ -473,12 +471,12 @@ lookupGT = goNothing
     goNothing :: forall k v x. IOrd k => k x -> Map k v -> Maybe (Some2 k v)
     goNothing !_ Tip = Nothing
     goNothing !k (Bin _ kx x l r) = case icompare k kx of
-      ILT _ -> goJust k kx x l
+      ILT -> goJust k kx x l
       _     -> goNothing k r
     goJust :: forall k v x y. IOrd k => k x -> k y -> v y -> Map k v -> Maybe (Some2 k v)
     goJust !_ kx' x' Tip = Just (Some2 kx' x')
     goJust !k kx' x' (Bin _ kx x l r) = case icompare k kx of
-      ILT _ -> goJust k kx x l
+      ILT -> goJust k kx x l
       _     -> goJust k kx' x' r
 {-# INLINABLE lookupGT #-}
 
@@ -494,15 +492,15 @@ lookupLE = goNothing
     goNothing :: forall k v x. IOrd k => k x -> Map k v -> Maybe (Some2 k v)
     goNothing !_ Tip = Nothing
     goNothing !k (Bin _ kx x l r) = case icompare k kx of
-                                      ILT _ -> goNothing k l
-                                      IEQ   -> Just (Some2 kx x)
-                                      IGT _ -> goJust k kx x r
+                                      ILT -> goNothing k l
+                                      IEQ -> Just (Some2 kx x)
+                                      IGT -> goJust k kx x r
     goJust :: forall k v x y. IOrd k => k x -> k y -> v y -> Map k v -> Maybe (Some2 k v)
     goJust !_ kx' x' Tip = Just (Some2 kx' x')
     goJust !k kx' x' (Bin _ kx x l r) = case icompare k kx of 
-                                         ILT _ -> goJust k kx' x' l
-                                         IEQ   -> Just (Some2 kx x)
-                                         IGT _ -> goJust k kx x r
+                                         ILT -> goJust k kx' x' l
+                                         IEQ -> Just (Some2 kx x)
+                                         IGT -> goJust k kx x r
 {-# INLINABLE lookupLE #-}
 
 -- | /O(log n)/. Find smallest key greater or equal to the given one and return
@@ -511,21 +509,21 @@ lookupLE = goNothing
 -- > lookupGE 3 (fromList [(3,'a'), (5,'b')]) == Just (3, 'a')
 -- > lookupGE 4 (fromList [(3,'a'), (5,'b')]) == Just (5, 'b')
 -- > lookupGE 6 (fromList [(3,'a'), (5,'b')]) == Nothing
-lookupGE :: forall k v x. IOrd k => k x -> Map k v -> Maybe (Some2 k v)
+lookupGE :: IOrd k => k x -> Map k v -> Maybe (Some2 k v)
 lookupGE = goNothing
   where
     goNothing :: forall k v x. IOrd k => k x -> Map k v -> Maybe (Some2 k v)
     goNothing !_ Tip = Nothing
     goNothing !k (Bin _ kx x l r) = case icompare k kx of 
-                                      ILT _ -> goJust k kx x l
-                                      IEQ   -> Just (Some2 kx x)
-                                      IGT _ -> goNothing k r
+                                      ILT -> goJust k kx x l
+                                      IEQ -> Just (Some2 kx x)
+                                      IGT -> goNothing k r
     goJust :: forall k v x y. IOrd k => k x -> k y -> v y -> Map k v -> Maybe (Some2 k v)
     goJust !_ kx' x' Tip = Just (Some2 kx' x')
     goJust !k kx' x' (Bin _ kx x l r) = case icompare k kx of 
-                                          ILT _ -> goJust k kx x l
-                                          IEQ   -> Just (Some2 kx x)
-                                          IGT _ -> goJust k kx' x' r
+                                          ILT -> goJust k kx x l
+                                          IEQ -> Just (Some2 kx x)
+                                          IGT -> goJust k kx' x' r
 {-# INLINABLE lookupGE #-}
 
 {--------------------------------------------------------------------
@@ -569,9 +567,9 @@ insert = go
     go !kx x Tip = singleton kx x
     go !kx x (Bin sz ky y l r) =
         case icompare kx ky of
-          ILT _ -> balanceL ky y (go kx x l) r
-          IGT _ -> balanceR ky y l (go kx x r)
-          IEQ   -> Bin sz kx x l r
+          ILT -> balanceL ky y (go kx x l) r
+          IGT -> balanceR ky y l (go kx x r)
+          IEQ -> Bin sz kx x l r
 {-# INLINABLE insert #-}
 
 -- Insert a new key and value in the map if it is not already present.
@@ -585,9 +583,9 @@ insertR = go
     go !kx x Tip = singleton kx x
     go !kx x t@(Bin _ ky y l r) =
         case icompare kx ky of
-          ILT _ -> balanceL ky y (go kx x l) r
-          IGT _ -> balanceR ky y l (go kx x r)
-          IEQ   -> t
+          ILT -> balanceL ky y (go kx x l) r
+          IGT -> balanceR ky y l (go kx x r)
+          IEQ -> t
 {-# INLINABLE insertR #-}
 
 -- | /O(log n)/. Insert with a function, combining new value and old value.
@@ -624,9 +622,9 @@ insertWithKey = go
     go _ !kx x Tip = singleton kx x
     go f !kx x (Bin sy ky y l r) =
         case icompare kx ky of
-          ILT _ -> balanceL ky y (go f kx x l) r
-          IGT _ -> balanceR ky y l (go f kx x r)
-          IEQ   -> Bin sy kx (f kx x y) l r
+          ILT -> balanceL ky y (go f kx x l) r
+          IGT -> balanceR ky y l (go f kx x r)
+          IEQ -> Bin sy kx (f kx x y) l r
 {-# INLINABLE insertWithKey #-}
 
 -- | /O(log n)/. Combines insert operation with old value retrieval.
@@ -654,11 +652,11 @@ insertLookupWithKey = go
     go _ !kx x Tip = (Nothing, singleton kx x)
     go f !kx x (Bin sy ky y l r) =
         case icompare kx ky of
-          ILT _ -> let (found, l') = go f kx x l
+          ILT -> let (found, l') = go f kx x l
                    in (found, balanceL ky y l' r)
-          IGT _ -> let (found, r') = go f kx x r
+          IGT -> let (found, r') = go f kx x r
                    in (found, balanceR ky y l r')
-          IEQ   -> (Just y, Bin sy kx (f kx x y) l r)
+          IEQ -> (Just y, Bin sy kx (f kx x y) l r)
 {-# INLINABLE insertLookupWithKey #-}
 
 {--------------------------------------------------------------------
@@ -679,9 +677,9 @@ delete = go
     go !_ Tip = Tip
     go !k (Bin _ kx x l r) =
       case icompare k kx of
-        ILT _ -> balanceR kx x (go k l) r
-        IGT _ -> balanceL kx x l (go k r)
-        IEQ   -> glue l r
+        ILT -> balanceR kx x (go k l) r
+        IGT -> balanceL kx x l (go k r)
+        IEQ -> glue l r
 {-# INLINABLE delete #-}
 
 -- | /O(log n)/. Update a value at a specific key with the result of the provided function.
@@ -739,9 +737,9 @@ updateWithKey = go
     go _ !_ Tip = Tip
     go f !k(Bin sx kx x l r) =
         case icompare k kx of
-          ILT _ -> balanceR kx x (go f k l) r
-          IGT _ -> balanceL kx x l (go f k r)
-          IEQ   -> case f kx x of
+          ILT -> balanceR kx x (go f k l) r
+          IGT -> balanceL kx x l (go f k r)
+          IEQ -> case f kx x of
             Just x' -> Bin sx kx x' l r
             Nothing -> glue l r
 {-# INLINABLE updateWithKey #-}
@@ -763,9 +761,9 @@ updateLookupWithKey = go
    go _ !_ Tip = (Nothing,Tip)
    go f !k (Bin sx kx x l r) =
      case icompare k kx of
-       ILT _ -> let (found,l') = go f k l in (found,balanceR kx x l' r)
-       IGT _ -> let (found,r') = go f k r in (found,balanceL kx x l r')
-       IEQ   -> case f kx x of
+       ILT -> let (found,l') = go f k l in (found,balanceR kx x l' r)
+       IGT -> let (found,r') = go f k r in (found,balanceL kx x l r')
+       IEQ -> case f kx x of
          Just x' -> (Just x', Bin sx kx x' l r)
          Nothing -> (Just x, glue l r)
 {-# INLINABLE updateLookupWithKey #-}
@@ -791,9 +789,9 @@ alter = go
       Nothing -> Tip
       Just x  -> singleton k x
     go f !k (Bin sx kx x l r) = case icompare k kx of
-      ILT _ -> balance kx x (go f k l) r
-      IGT _ -> balance kx x l (go f k r)
-      IEQ   -> case f (Just x) of
+      ILT -> balance kx x (go f k l) r
+      IGT -> balance kx x l (go f k r)
+      IEQ -> case f (Just x) of
         Just x' -> Bin sx kx x' l r
         Nothing -> glue l r
 {-# INLINABLE alter #-}
@@ -818,9 +816,9 @@ findIndex = go 0
     go :: Int -> k x -> Map k a -> Int
     go !_ !_ Tip  = error "Map.findIndex: element is not in the map"
     go !idx !k (Bin _ kx _ l r) = case icompare k kx of
-      ILT _ -> go idx k l
-      IGT _ -> go (idx + size l + 1) k r
-      IEQ   -> idx + size l
+      ILT -> go idx k l
+      IGT -> go (idx + size l + 1) k r
+      IEQ -> idx + size l
 {-# INLINABLE findIndex #-}
 
 -- | /O(log n)/. Lookup the /index/ of a key, which is its zero-based index in
@@ -839,9 +837,9 @@ lookupIndex = go 0
     go :: IOrd k => Int -> k x -> Map k a -> Maybe Int
     go !_ !_ Tip  = Nothing
     go !idx !k (Bin _ kx _ l r) = case icompare k kx of
-      ILT _ -> go idx k l
-      IGT _ -> go (idx + size l + 1) k r
-      IEQ   -> Just $! idx + size l
+      ILT -> go idx k l
+      IGT -> go (idx + size l + 1) k r
+      IEQ -> Just $! idx + size l
 {-# INLINABLE lookupIndex #-}
 
 -- | /O(log n)/. Retrieve an element by its /index/, i.e. by its zero-based
@@ -1024,7 +1022,7 @@ maxViewWithKey x   = Just (deleteFindMax x)
 
 minView :: Map k a -> Maybe (Some1 a, Map k a)
 minView Tip = Nothing
-minView x   = Just (first (\(Some2 _ x) -> Some1 x) $ deleteFindMin x)
+minView x   = Just (first (\(Some2 _ y) -> Some1 y) $ deleteFindMin x)
 
 -- | /O(log n)/. Retrieves the value associated with maximal key of the
 -- map, and the map stripped of that element, or 'Nothing' if passed an
@@ -1035,7 +1033,7 @@ minView x   = Just (first (\(Some2 _ x) -> Some1 x) $ deleteFindMin x)
 
 maxView :: Map k a -> Maybe (Some1 a, Map k a)
 maxView Tip = Nothing
-maxView x   = Just (first (\(Some2 _ x) -> Some1 x) $ deleteFindMax x)
+maxView x   = Just (first (\(Some2 _ y) -> Some1 y) $ deleteFindMax x)
 
 -- Update the 1st component of a tuple (special case of Control.Arrow.first)
 first :: (a -> b) -> (a,c) -> (b,c)
@@ -1274,7 +1272,7 @@ mergeWithKey f g1 g2 = go
                                                                Tip -> merge l' r'
                                                                (Bin _ kx' x' Tip Tip) -> case ieq kx kx' of
                                                                    ITrue -> link kx x' l' r'
-                                                                   IFalse _ -> error "mergeWithKey: Given function only1 does not fulfil required conditions (see documentation)"
+                                                                   IFalse -> error "mergeWithKey: Given function only1 does not fulfil required conditions (see documentation)"
                                                                _ -> error "mergeWithKey: Given function only1 does not fulfil required conditions (see documentation)"
                                                   Just x2 -> case f kx x x2 of
                                                                Nothing -> merge l' r'
@@ -1324,7 +1322,7 @@ submap' f (Bin _ kx x l r) t
       Just y  -> toBool (f x y) && submap' f l lt && submap' f r gt
         where toBool :: IBool a b -> Bool
               toBool ITrue = True
-              toBool (IFalse _) = False
+              toBool (IFalse) = False
   where
     (lt,found,gt) = splitLookup kx t
 {-# INLINABLE submap' #-}
@@ -1829,7 +1827,7 @@ fromList (Some2 kx0 x0 : xs0) | not_ordered kx0 xs0 = fromList' (Bin 1 kx0 x0 Ti
   where
     not_ordered _ [] = False
     not_ordered kx (Some2 ky _ : _) = case icompare kx ky of
-        ILT _ -> False
+        ILT -> False
         _     -> True
     {-# INLINE not_ordered #-}
 
@@ -1995,7 +1993,7 @@ fromAscListWithKey f xs
   combineEq' z [] = [z]
   combineEq' z@(Some2 kz zz) (x@(Some2 kx xx):xs') = case ieq kx kz of
       ITrue -> let yy = f kx xx zz in combineEq' (Some2 kx yy) xs'
-      IFalse _ -> z:combineEq' x xs'
+      IFalse -> z:combineEq' x xs'
 {-# INLINABLE fromAscListWithKey #-}
 
 -- | /O(n)/. Build a map from an ascending list of distinct elements in linear time.
@@ -2053,18 +2051,18 @@ trim :: IOrd k => MaybeS (Some1 k) -> MaybeS (Some1 k) -> Map k a -> Map k a
 trim NothingS   NothingS   t = t
 trim (JustS (Some1 lk)) NothingS   t = greater lk t 
     where greater lo (Bin _ k _ _ r) = case icompare k lo of
-            IGT _ -> error "trim.greater precondition failed"
+            IGT -> error "trim.greater precondition failed"
             _     -> greater lo r
           greater _ t' = t'
 trim NothingS (JustS (Some1 hk)) t = lesser hk t 
     where lesser hi (Bin _ k _ l _) = case icompare k hi of
-            ILT _ -> error "trim.lesser precondition failed"
+            ILT -> error "trim.lesser precondition failed"
             _     -> lesser hi l
           lesser _ t' = t'
 trim (JustS (Some1 lk)) (JustS (Some1 hk)) t = middle lk hk t  
-    where middle lo hi (Bin _ k _ _ r) | (ILT _) <- icompare k lo = middle lo hi r
+    where middle lo hi (Bin _ k _ _ r) | (ILT) <- icompare k lo = middle lo hi r
                                        | IEQ <- icompare k lo = middle lo hi r
-          middle lo hi (Bin _ k _ l _) | (IGT _) <- icompare k hi = middle lo hi l
+          middle lo hi (Bin _ k _ l _) | (IGT) <- icompare k hi = middle lo hi l
                                        | IEQ <- icompare k hi = middle lo hi l
                                        | otherwise = error "trim.middle precondition failed"
           middle _ _ t' = t'
@@ -2080,24 +2078,24 @@ trimLookupLo lk0 mhk0 t0 = toPair $ go lk0 mhk0 t0
     go lk NothingS t = greater lk t
       where greater :: IOrd k => k x -> Map k a -> StrictPair (Maybe (a x)) (Map k a)
             greater lo t'@(Bin _ kx x l r) = case icompare lo kx of
-                ILT _ -> lookup lo l :*: t'
-                IEQ   -> (Just x :*: r)
-                IGT _ -> greater lo r
+                ILT -> lookup lo l :*: t'
+                IEQ -> (Just x :*: r)
+                IGT -> greater lo r
             greater _ Tip = (Nothing :*: Tip)
     go lk (JustS (Some1 hk)) t = middle lk hk t
       where middle :: IOrd k => k x -> k y -> Map k a -> StrictPair (Maybe (a x)) (Map k a)
             middle lo hi t'@(Bin _ kx x l r) = case icompare lo kx of
-                ILT _ -> case icompare kx hi of
-                  ILT _ -> lookup lo l :*: t'
-                  IEQ   -> middle lo hi l
-                  IGT _ -> middle lo hi l
-                IEQ   -> Just x :*: lesser hi r
-                IGT _ -> middle lo hi r
+                ILT -> case icompare kx hi of
+                  ILT -> lookup lo l :*: t'
+                  IEQ -> middle lo hi l
+                  IGT -> middle lo hi l
+                IEQ -> Just x :*: lesser hi r
+                IGT -> middle lo hi r
             middle _ _ Tip = (Nothing :*: Tip)
 
             lesser :: IOrd k => k x -> Map k a -> Map k a
             lesser hi (Bin _ k _ l _) = case icompare k hi of
-              ILT _ -> error "trimLookupLo.lesser invariant failed"
+              ILT -> error "trimLookupLo.lesser invariant failed"
               _     -> lesser hi l
             lesser _ t' = t'
 {-# INLINABLE trimLookupLo #-}
@@ -2112,9 +2110,9 @@ filterGt (JustS (Some1 b)) t = filter' b t
   where filter' _   Tip = Tip
         filter' b' (Bin _ kx x l r) =
           case icompare b' kx of 
-            ILT _ -> link kx x (filter' b' l) r
-            IEQ   -> r
-            IGT _ -> filter' b' r
+            ILT -> link kx x (filter' b' l) r
+            IEQ -> r
+            IGT -> filter' b' r
 {-# INLINABLE filterGt #-}
 
 filterLt :: IOrd k => MaybeS (Some1 k) -> Map k v -> Map k v
@@ -2122,9 +2120,9 @@ filterLt NothingS t = t
 filterLt (JustS (Some1 b)) t = filter' b t
   where filter' _   Tip = Tip
         filter' b' (Bin _ kx x l r) =
-          case icompare kx b' of ILT _ -> link kx x l (filter' b' r)
-                                 IEQ   -> l
-                                 IGT _ -> filter' b' l
+          case icompare kx b' of ILT -> link kx x l (filter' b' r)
+                                 IEQ -> l
+                                 IGT -> filter' b' l
 {-# INLINABLE filterLt #-}
 
 {--------------------------------------------------------------------
@@ -2147,9 +2145,9 @@ split k0 t0 = k0 `seq` toPair $ go k0 t0
       case t of
         Tip            -> (Tip :*: Tip)
         Bin _ kx x l r -> case icompare k kx of
-          ILT _ -> let (lt :*: gt) = go k l in lt :*: link kx x gt r
-          IGT _ -> let (lt :*: gt) = go k r in link kx x l lt :*: gt
-          IEQ   -> (l :*: r)
+          ILT -> let (lt :*: gt) = go k l in lt :*: link kx x gt r
+          IGT -> let (lt :*: gt) = go k r in link kx x l lt :*: gt
+          IEQ -> (l :*: r)
 {-# INLINABLE split #-}
 
 -- | /O(log n)/. The expression (@'splitLookup' k map@) splits a map just
@@ -2166,13 +2164,13 @@ splitLookup k t = k `seq`
   case t of
     Tip            -> (Tip,Nothing,Tip)
     Bin _ kx x l r -> case icompare k kx of
-      ILT _ -> let (lt,z,gt) = splitLookup k l
-                   gt' = link kx x gt r
-               in gt' `seq` (lt,z,gt')
-      IGT _ -> let (lt,z,gt) = splitLookup k r
-                   lt' = link kx x l lt
-               in lt' `seq` (lt',z,gt)
-      IEQ   -> (l, Just x, r)
+      ILT -> let (lt,z,gt) = splitLookup k l
+                 gt' = link kx x gt r
+             in gt' `seq` (lt,z,gt')
+      IGT -> let (lt,z,gt) = splitLookup k r
+                 lt' = link kx x l lt
+             in lt' `seq` (lt',z,gt)
+      IEQ -> (l, Just x, r)
 {-# INLINABLE splitLookup #-}
 
 {--------------------------------------------------------------------
@@ -2666,10 +2664,10 @@ ordered t
           Tip              -> True
           Bin _ kx _ l r  -> (lo kx) && (hi kx) && bounded lo (`ilt` kx) l && bounded (`igt` kx) hi r
             where ilt x y = case icompare x y of
-                              ILT _ -> True
+                              ILT -> True
                               _     -> False
                   igt x y = case icompare x y of
-                              IGT _ -> True
+                              IGT -> True
                               _     -> False
 
 -- | Exported only for "Debug.QuickCheck"

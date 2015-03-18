@@ -1,0 +1,2 @@
+:set -isrc
+:set -fcontext-stack=100

@@ -296,9 +296,9 @@ member = go
   where
     go !_ Tip = False
     go !x (Bin _ y l r) = case icompare x y of
-      ILT _ -> (go x l) 
-      IGT _ -> (go x r)
-      IEQ   -> True
+      ILT -> (go x l) 
+      IGT -> (go x r)
+      IEQ -> True
 {-# INLINABLE member #-}
 
 -- | /O(log n)/. Is the element not in the set?
@@ -311,17 +311,17 @@ notMember a t = not $ member a t
 -- > lookupLT 3 (fromList [3, 5]) == Nothing
 -- > lookupLT 5 (fromList [3, 5]) == Just 3
 lookupLT :: forall a x. IOrd a => a x -> Set a -> Maybe (Some1 a)
-lookupLT x y = goNothing x y
+lookupLT x' y' = goNothing x' y'
   where
     goNothing !_ Tip = Nothing
     goNothing !x (Bin _ y l r) = case icompare x y of
-        IGT _   -> goJust x y r
-        _       -> goNothing x l
+        IGT -> goJust x y r
+        _     -> goNothing x l
     goJust :: forall y. a x -> a y -> Set a -> Maybe (Some1 a)
     goJust !_ best Tip = Just $ Some1 best
     goJust !x best (Bin _ y l r) = case icompare x y of
-        IGT _ -> goJust x y r
-        _     -> goJust x best l
+        IGT -> goJust x y r
+        _   -> goJust x best l
 {-# INLINABLE lookupLT #-}
 
 -- | /O(log n)/. Find smallest element greater than the given one.
@@ -329,17 +329,17 @@ lookupLT x y = goNothing x y
 -- > lookupGT 4 (fromList [3, 5]) == Just 5
 -- > lookupGT 5 (fromList [3, 5]) == Nothing
 lookupGT :: forall a x. IOrd a => a x -> Set a -> Maybe (Some1 a)
-lookupGT x y = goNothing x y
+lookupGT x' y' = goNothing x' y'
   where
     goNothing !_ Tip = Nothing
     goNothing !x (Bin _ y l r) = case icompare x y of
-        ILT _ -> goJust x y l
-        _     -> goNothing x r
+        ILT -> goJust x y l
+        _ -> goNothing x r
     goJust :: forall y. a x -> a y -> Set a -> Maybe (Some1 a)
     goJust !_ best Tip = Just $ Some1 best
     goJust !x best (Bin _ y l r) = case icompare x y of
-        ILT _ -> goJust x y l
-        _     -> goJust x best r
+        ILT -> goJust x y l
+        _ -> goJust x best r
 {-# INLINABLE lookupGT #-}
 
 -- | /O(log n)/. Find largest element smaller or equal to the given one.
@@ -348,19 +348,19 @@ lookupGT x y = goNothing x y
 -- > lookupLE 4 (fromList [3, 5]) == Just 3
 -- > lookupLE 5 (fromList [3, 5]) == Just 5
 lookupLE :: forall a x. IOrd a => a x -> Set a -> Maybe (Some1 a)
-lookupLE x y = goNothing x y
+lookupLE x' y' = goNothing x' y'
   where
     goNothing !_ Tip = Nothing
     goNothing !x (Bin _ y l r) = case icompare x y of
-        ILT _ -> goNothing x l
-        IEQ   -> Just (Some1 y)
-        IGT _ -> goJust x y r
+        ILT -> goNothing x l
+        IEQ -> Just (Some1 y)
+        IGT -> goJust x y r
     goJust :: forall y. a x -> a y -> Set a -> Maybe (Some1 a)
     goJust !_ best Tip = Just $ Some1 best
     goJust !x best (Bin _ y l r) = case icompare x y of
-        ILT _ -> goJust x best l
-        IEQ   -> Just (Some1 y)
-        IGT _ -> goJust x y r
+        ILT -> goJust x best l
+        IEQ -> Just (Some1 y)
+        IGT -> goJust x y r
 {-# INLINABLE lookupLE #-}
 
 -- | /O(log n)/. Find smallest element greater or equal to the given one.
@@ -373,15 +373,15 @@ lookupGE = goNothing
   where
     goNothing !_ Tip = Nothing
     goNothing !x (Bin _ y l r) = case icompare x y of 
-        ILT _ -> goJust x y l
-        IEQ   -> Just (Some1 y)
-        IGT _ -> goNothing x r
+        ILT -> goJust x y l
+        IEQ -> Just (Some1 y)
+        IGT -> goNothing x r
     goJust :: forall y. a x -> a y -> Set a -> Maybe (Some1 a)
     goJust !_ best Tip = Just $ Some1 best
     goJust !x best (Bin _ y l r) = case icompare x y of
-        ILT _ -> goJust x y l
-        IEQ   -> Just (Some1 y)
-        IGT _ -> goJust x best r
+        ILT -> goJust x y l
+        IEQ -> Just (Some1 y)
+        IGT -> goJust x best r
 {-# INLINABLE lookupGE #-}
 
 {--------------------------------------------------------------------
@@ -411,9 +411,9 @@ insert = go
     go :: IOrd a => a x -> Set a -> Set a
     go !x Tip = singleton x
     go !x (Bin sz y l r) = case icompare x y of
-      ILT _ -> balanceL y (go x l) r
-      IEQ   -> Bin sz x l r
-      IGT _ -> balanceR y l (go x r)
+      ILT -> balanceL y (go x l) r
+      IEQ -> Bin sz x l r
+      IGT -> balanceR y l (go x r)
 {-# INLINABLE insert #-}
 
 -- Insert an element to the set only if it is not in the set.
@@ -426,9 +426,9 @@ insertR = go
     go :: IOrd a => a x -> Set a -> Set a
     go !x Tip = singleton x
     go !x t@(Bin _ y l r) = case icompare x y of
-      ILT _ -> balanceL y (go x l) r
-      IEQ   -> t
-      IGT _ -> balanceR y l (go x r)
+      ILT -> balanceL y (go x l) r
+      IEQ -> t
+      IGT -> balanceR y l (go x r)
 {-# INLINABLE insertR #-}
 
 -- | /O(log n)/. Delete an element from a set.
@@ -440,9 +440,9 @@ delete = go
     go :: IOrd a => a x -> Set a -> Set a
     go !_ Tip = Tip
     go !x (Bin _ y l r) = case icompare x y of
-      ILT _ -> balanceR y (go x l) r
-      IEQ   -> glue l r
-      IGT _ -> balanceL y l (go x r)
+      ILT -> balanceR y (go x l) r
+      IEQ -> glue l r
+      IGT -> balanceL y l (go x r)
 {-# INLINABLE delete #-}
 
 {--------------------------------------------------------------------
@@ -595,7 +595,7 @@ partition p0 t0 = toPair $ go p0 t0
     go _ Tip = (Tip :*: Tip)
     go p (Bin _ x l r) = case (go p l, go p r) of
       ((l1 :*: l2), (r1 :*: r2))
-        | p x       -> link x l1 r1 :*: merge l2 r2
+        | p x     -> link x l1 r1 :*: merge l2 r2
         | otherwise -> merge l1 r1 :*: link x l2 r2
 
 {----------------------------------------------------------------------
@@ -746,8 +746,8 @@ fromList (Some1 x0 : xs0) | not_ordered x0 xs0 = fromList' (Bin 1 x0 Tip Tip) xs
   where
     not_ordered _ [] = False
     not_ordered x (Some1 y : _) = case icompare x y of
-        ILT _ -> False
-        _     -> True
+        ILT -> False
+        _   -> True
     {-# INLINE not_ordered #-}
 
     fromList' t0 xs = foldlStrict ins t0 xs
@@ -792,14 +792,14 @@ fromAscList xs
   -- [combineEq xs] combines equal elements with [const] in an ordered list [xs]
   combineEq xs'
     = case xs' of
-        []     -> []
-        [x]    -> [x]
+        []   -> []
+        [x]  -> [x]
         (x:xx) -> combineEq' x xx
 
   combineEq' z [] = [z]
   combineEq' z@(Some1 z') (x@(Some1 x'):xs') = case ieq z' x' of
-    IFalse _ -> z:combineEq' x xs'
-    ITrue    -> combineEq' z xs'
+    IFalse -> z:combineEq' x xs'
+    ITrue  -> combineEq' z xs'
 {-# INLINABLE fromAscList #-}
 
 
@@ -890,16 +890,16 @@ data MaybeS a = NothingS | forall x. JustS !(a x)
 trim :: IOrd a => MaybeS a -> MaybeS a -> Set a -> Set a
 trim NothingS   NothingS   t = t
 trim (JustS lx) NothingS   t = greater lx t where greater lo (Bin _ x _ r) = case icompare x lo of
-                                                    IGT _ -> error "trim precondition failed"
-                                                    _     -> greater lo r
+                                                    IGT -> error "trim precondition failed"
+                                                    _   -> greater lo r
                                                   greater _  t' = t'
 trim NothingS   (JustS hx) t = lesser hx t  where lesser  hi (Bin _ x l _) = case icompare x hi of
-                                                    ILT _ -> error "trim precondition failed"
-                                                    _     -> lesser hi l
+                                                    ILT -> error "trim precondition failed"
+                                                    _   -> lesser hi l
                                                   lesser  _  t' = t'
 trim (JustS lx) (JustS hx) t = middle lx hx t  where middle lo hi (Bin _ x l r) = case icompare x lo of
-                                                      IGT _ -> middle lo hi l
-                                                      _     -> middle lo hi r
+                                                      IGT -> middle lo hi l
+                                                      _   -> middle lo hi r
                                                      middle _  _  t' = t'
 {-# INLINABLE trim #-}
 
@@ -912,9 +912,9 @@ filterGt NothingS t = t
 filterGt (JustS b) t = filter' b t
   where filter' _   Tip = Tip
         filter' b' (Bin _ x l r) = case icompare b' x of
-                                     ILT _ -> link x (filter' b' l) r
-                                     IEQ   -> r 
-                                     IGT _ -> filter' b' r
+                                     ILT -> link x (filter' b' l) r
+                                     IEQ -> r 
+                                     IGT -> filter' b' r
 {-# INLINABLE filterGt #-}
 
 filterLt :: IOrd a => MaybeS a -> Set a -> Set a
@@ -922,9 +922,9 @@ filterLt NothingS t = t
 filterLt (JustS b) t = filter' b t
   where filter' _   Tip = Tip
         filter' b' (Bin _ x l r) = case icompare x b' of
-                                     ILT _ -> link x l (filter' b' r)
-                                     IEQ   -> l
-                                     IGT _ -> filter' b' l
+                                     ILT -> link x l (filter' b' r)
+                                     IEQ -> l
+                                     IGT -> filter' b' l
 {-# INLINABLE filterLt #-}
 
 {--------------------------------------------------------------------
@@ -938,9 +938,9 @@ split x0 t0 = toPair $ go x0 t0
   where
     go _ Tip = (Tip :*: Tip)
     go x (Bin _ y l r) = case icompare x y of
-                           ILT _ -> let (lt :*: gt) = go x l in (lt :*: link y gt r)
-                           IEQ   -> l :*: r
-                           IGT _ -> let (lt :*: gt) = go x r in (link y l lt :*: gt)
+                           ILT -> let (lt :*: gt) = go x l in (lt :*: link y gt r)
+                           IEQ -> l :*: r
+                           IGT -> let (lt :*: gt) = go x r in (link y l lt :*: gt)
 {-# INLINABLE split #-}
 
 -- | /O(log n)/. Performs a 'split' but also returns whether the pivot
@@ -948,13 +948,13 @@ split x0 t0 = toPair $ go x0 t0
 splitMember :: IOrd a => a x -> Set a -> (Set a,Bool,Set a)
 splitMember _ Tip = (Tip, False, Tip)
 splitMember x (Bin _ y l r) = case icompare x y of
-                                ILT _ -> let (lt, found, gt) = splitMember x l
-                                             gt' = link y gt r
-                                         in gt' `seq` (lt, found, gt')
-                                IEQ   -> (l, True, r)
-                                IGT _ -> let (lt, found, gt) = splitMember x r
-                                             lt' = link y l lt
-                                         in lt' `seq` (lt', found, gt)
+                                ILT -> let (lt, found, gt) = splitMember x l
+                                           gt' = link y gt r
+                                       in gt' `seq` (lt, found, gt')
+                                IEQ -> (l, True, r)
+                                IGT -> let (lt, found, gt) = splitMember x r
+                                           lt' = link y l lt
+                                       in lt' `seq` (lt', found, gt)
 {-# INLINABLE splitMember #-}
 
 {--------------------------------------------------------------------
@@ -978,9 +978,9 @@ findIndex = go 0
     go :: IOrd a => Int -> a x -> Set a -> Int
     go !_   !_ Tip  = error "Set.findIndex: element is not in the set"
     go !idx !x (Bin _ kx l r) = case icompare x kx of
-                                  ILT _ -> go idx x l
-                                  IEQ   -> idx + size l
-                                  IGT _ -> go (idx + size l + 1) x r
+                                  ILT -> go idx x l
+                                  IEQ -> idx + size l
+                                  IGT -> go (idx + size l + 1) x r
 {-# INLINABLE findIndex #-}
 
 -- | /O(log n)/. Lookup the /index/ of an element, which is its zero-based index in
@@ -999,9 +999,9 @@ lookupIndex = go 0
     go :: IOrd a => Int -> a x -> Set a -> Maybe Int
     go !_   !_ Tip  = Nothing
     go !idx !x (Bin _ kx l r) = case icompare x kx of
-                                  ILT _ -> go idx x l
-                                  IEQ   -> Just $! idx + size l
-                                  IGT _ -> go (idx + size l + 1) x r
+                                  ILT -> go idx x l
+                                  IEQ -> Just $! idx + size l
+                                  IGT -> go (idx + size l + 1) x r
 {-# INLINABLE lookupIndex #-}
 
 -- | /O(log n)/. Retrieve an element by its /index/, i.e. by its zero-based
@@ -1090,13 +1090,13 @@ insertMax x t
   = case t of
       Tip -> singleton x
       Bin _ y l r
-          -> balanceR y l (insertMax x r)
+        -> balanceR y l (insertMax x r)
 
 insertMin x t
   = case t of
       Tip -> singleton x
       Bin _ y l r
-          -> balanceL y (insertMin x l) r
+        -> balanceL y (insertMin x l) r
 
 {--------------------------------------------------------------------
   [merge l r]: merges two trees.
@@ -1128,8 +1128,8 @@ deleteFindMin :: Set a -> (Some1 a,Set a)
 deleteFindMin t
   = case t of
       Bin _ x Tip r -> (Some1 x,r)
-      Bin _ x l r   -> let (xm,l') = deleteFindMin l in (xm,balanceR x l' r)
-      Tip           -> (error "Set.deleteFindMin: can not return the minimal element of an empty set", Tip)
+      Bin _ x l r -> let (xm,l') = deleteFindMin l in (xm,balanceR x l' r)
+      Tip         -> (error "Set.deleteFindMin: can not return the minimal element of an empty set", Tip)
 
 -- | /O(log n)/. Delete and find the maximal element.
 --
@@ -1138,8 +1138,8 @@ deleteFindMax :: Set a -> (Some1 a,Set a)
 deleteFindMax t
   = case t of
       Bin _ x l Tip -> (Some1 x,l)
-      Bin _ x l r   -> let (xm,r') = deleteFindMax r in (xm,balanceL x l r')
-      Tip           -> (error "Set.deleteFindMax: can not return the maximal element of an empty set", Tip)
+      Bin _ x l r -> let (xm,r') = deleteFindMax r in (xm,balanceL x l r')
+      Tip         -> (error "Set.deleteFindMax: can not return the maximal element of an empty set", Tip)
 
 -- | /O(log n)/. Retrieves the minimal key of the set, and the set
 -- stripped of that element, or 'Nothing' if passed an empty set.
@@ -1311,7 +1311,7 @@ bin x l r
 splitRoot :: Set a -> [Set a]
 splitRoot orig =
   case orig of
-    Tip           -> []
+    Tip         -> []
     Bin _ v l r -> [l, singleton v, r]
 {-# INLINE splitRoot #-}
 
@@ -1371,9 +1371,9 @@ showsTree wide lbars rbars t
   = case t of
       Tip -> showsBars lbars . showString "|\n"
       Bin _ x Tip Tip
-          -> showsBars lbars . ishows x . showString "\n"
+        -> showsBars lbars . ishows x . showString "\n"
       Bin _ x l r
-          -> showsTree wide (withBar rbars) (withEmpty rbars) r .
+        -> showsTree wide (withBar rbars) (withEmpty rbars) r .
              showWide wide rbars .
              showsBars lbars . ishows x . showString "\n" .
              showWide wide lbars .
@@ -1384,9 +1384,9 @@ showsTreeHang wide bars t
   = case t of
       Tip -> showsBars bars . showString "|\n"
       Bin _ x Tip Tip
-          -> showsBars bars . ishows x . showString "\n"
+        -> showsBars bars . ishows x . showString "\n"
       Bin _ x l r
-          -> showsBars bars . ishows x . showString "\n" .
+        -> showsBars bars . ishows x . showString "\n" .
              showWide wide bars .
              showsTreeHang wide (withBar bars) l .
              showWide wide bars .
@@ -1425,18 +1425,18 @@ ordered t
     bounded :: (forall x. a x -> Bool) -> (forall x. a x -> Bool) -> Set a -> Bool
     bounded lo hi t'
       = case t' of
-          Tip         -> True
+          Tip       -> True
           Bin _ x l r -> (lo x) && (hi x) && bounded lo (`ilt` x) l && bounded (`igt` x) hi r
     ilt x y = case icompare x y of
-                ILT _ -> True
-                _     -> False
+                ILT -> True
+                _   -> False
     igt x y = case icompare x y of
-                IGT _ -> True
-                _     -> False
+                IGT -> True
+                _   -> False
 balanced :: Set a -> Bool
 balanced t
   = case t of
-      Tip         -> True
+      Tip       -> True
       Bin _ _ l r -> (size l + size r <= 1 || (size l <= delta*size r && size r <= delta*size l)) &&
                      balanced l && balanced r
 
@@ -1446,7 +1446,7 @@ validsize t
   where
     realsize t'
       = case t' of
-          Tip          -> Just 0
+          Tip        -> Just 0
           Bin sz _ l r -> case (realsize l,realsize r) of
                             (Just n,Just m)  | n+m+1 == sz  -> Just sz
-                            _                -> Nothing
+                            _              -> Nothing

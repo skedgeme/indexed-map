@@ -1,9 +1,4 @@
-{-# LANGUAGE CPP #-}
-#if !defined(TESTING) && __GLASGOW_HASKELL__ >= 703
 {-# LANGUAGE Safe #-}
-#endif
-
-#include "containers.h"
 
 -----------------------------------------------------------------------------
 -- |
@@ -58,12 +53,7 @@ module Indexed.Map.Lazy (
     -- $strictness
 
     -- * Map type
-#if !defined(TESTING)
     Map              -- instance Eq,Show,Read
-#else
-    Map(..)          -- instance Eq,Show,Read
-#endif
-
     -- * Operators
     , (!), (\\)
 
@@ -212,14 +202,6 @@ module Indexed.Map.Lazy (
     , showTree
     , showTreeWith
     , valid
-
-#if defined(TESTING)
-    -- * Internals
-    , bin
-    , balanced
-    , link
-    , merge
-#endif
 
     ) where
 
